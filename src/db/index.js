@@ -15,10 +15,16 @@ const clientOptions = isAtlas
 
 export async function connect() {
   if (db) return db;
-  client = new MongoClient(uri, clientOptions);
-  await client.connect();
-  db = client.db();
-  return db;
+  const c = new MongoClient(uri, clientOptions);
+  try {
+    await c.connect();
+    client = c;
+    db = client.db();
+    return db;
+  } catch (err) {
+    await c.close().catch(() => {});
+    throw err;
+  }
 }
 
 export function getDb() {

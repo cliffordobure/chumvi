@@ -31,6 +31,16 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Return 503 when DB is down so frontend gets a clear message instead of 500 "Database not connected"
+app.use('/api', (req, res, next) => {
+  if (!isConnected()) {
+    return res.status(503).json({
+      error: 'Service temporarily unavailable. Please try again in a moment.',
+    });
+  }
+  next();
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/chamas', chamasRoutes);
 app.use('/api/wallet', walletRoutes);
@@ -51,13 +61,23 @@ app.use((err, req, res, next) => {
 });
 
 // Start server first so the process binds to PORT (required by Render/Heroku).
-// Then connect to MongoDB in the background; app stays up even if DB is temporarily unavailable.
+// Retry MongoDB connection in the background until success (e.g. after fixing Atlas Network Access).
+async function connectWithRetry() {
+  const intervalMs = 10000; // 10 seconds
+  for (;;) {
+    try {
+      await connect();
+      console.log('MongoDB connected');
+      return;
+    } catch (err) {
+      console.error('MongoDB connection failed:', err.message);
+      console.log(`Retrying in ${intervalMs / 1000}s...`);
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  }
+}
+
 app.listen(PORT, () => {
   console.log(`Chama Wallet API listening on port ${PORT}`);
-  connect()
-    .then(() => console.log('MongoDB connected'))
-    .catch((err) => {
-      console.error('MongoDB connection failed:', err.message);
-      // Don't exit - health check will report DB status
-    });
+  connectWithRetry();
 });
