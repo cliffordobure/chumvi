@@ -7,9 +7,15 @@ const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/chama_wallet';
 let client = null;
 let db = null;
 
+// Options that fix Atlas TLS/SSL errors on cloud runtimes (e.g. Render)
+const isAtlas = uri.startsWith('mongodb+srv://');
+const clientOptions = isAtlas
+  ? { serverSelectionTimeoutMS: 10000, family: 4, autoSelectFamily: false }
+  : {};
+
 export async function connect() {
   if (db) return db;
-  client = new MongoClient(uri);
+  client = new MongoClient(uri, clientOptions);
   await client.connect();
   db = client.db();
   return db;
@@ -18,6 +24,10 @@ export async function connect() {
 export function getDb() {
   if (!db) throw new Error('Database not connected. Call connect() first.');
   return db;
+}
+
+export function isConnected() {
+  return db != null;
 }
 
 export function col(name) {

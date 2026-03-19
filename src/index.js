@@ -3,11 +3,11 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 
-import { connect } from './db/index.js';
+import { connect, isConnected } from './db/index.js';
 import authRoutes from './routes/auth.js';
 import chamasRoutes from './routes/chamas.js';
 import walletRoutes from './routes/wallet.js';
-import contributionsRoutes from './routes/contributions.js';
+import contributionsRoutes from './routes/contributions.js'; 
 import loansRoutes from './routes/loans.js';
 import transactionsRoutes from './routes/transactions.js';
 import notificationsRoutes from './routes/notifications.js';
@@ -23,7 +23,12 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || true, credentials: true }));
 app.use(express.json());
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const dbOk = isConnected();
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'ok' : 'degraded',
+    database: dbOk ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString(),
+  });
 });
 
 app.use('/api/auth', authRoutes);
@@ -45,13 +50,14 @@ app.use((err, req, res, next) => {
   });
 });
 
-connect()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Chama Wallet API running on http://localhost:${PORT}`);
+// Start server first so the process binds to PORT (required by Render/Heroku).
+// Then connect to MongoDB in the background; app stays up even if DB is temporarily unavailable.
+app.listen(PORT, () => {
+  console.log(`Chama Wallet API listening on port ${PORT}`);
+  connect()
+    .then(() => console.log('MongoDB connected'))
+    .catch((err) => {
+      console.error('MongoDB connection failed:', err.message);
+      // Don't exit - health check will report DB status
     });
-  })
-  .catch((err) => {
-    console.error('Failed to connect to MongoDB:', err);
-    process.exit(1);
-  });
+});
